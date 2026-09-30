@@ -111,7 +111,7 @@ public final class PathExecutor
 		// like Baritone: think a bit, then go with the best partial path
 		// found so far and keep planning the next stretch while walking
 		return new PathFinder(from, goal, allowBreak, budget, 150_000,
-			prefetch ? 5000 : 2500);
+			prefetch ? 4000 : 2000);
 	}
 
 	private void plan()
@@ -163,7 +163,7 @@ public final class PathExecutor
 			// can't plan from mid-air (knocked off a ledge, mid-jump)
 			if(!grounded && groundWait++ < 60)
 				return status = Status.THINKING;
-			finder.stepFor(8);
+			finder.stepFor(20);
 			if(thinkTimer > 0)
 				thinkTimer--;
 			if(!finder.isDone() || thinkTimer > 0)

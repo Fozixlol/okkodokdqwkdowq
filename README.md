@@ -1,4 +1,4 @@
-# HumanBot 2.1 — a Baritone-style bot that plays like a person
+# HumanBot 2.2 — a Baritone-style bot that plays like a person
 
 For **Minecraft Java 26.3** · Fabric Loader ≥ 0.19.5 · Fabric API · Java 25
 
@@ -19,7 +19,7 @@ through the normal player controls with a humanizer on top, so it moves like a p
 ## Install
 
 1. Install Fabric Loader for 26.3 (fabricmc.net/use).
-2. Put **`humanbot-2.1.0.jar`** and **Fabric API** into `.minecraft/mods`.
+2. Put **`humanbot-2.2.0.jar`** and **Fabric API** into `.minecraft/mods`.
 3. Start the game. Press **Right Shift** in a world.
 
 ## Controls
@@ -33,16 +33,30 @@ Both can be rebound in *Options → Controls → HumanBot*.
 
 ## The menu (Right Shift)
 
-- **Tasks** — type coordinates and hit *Go* (*Here* fills in where you stand), mine any
-  block with an optional count, follow a player, go to the nearest crafting table /
-  chest / furnace, and one-click *Chop trees*, *Farm*, *Explore*, *Mine ores*, plus
-  big **STOP** and **Pause** buttons. The bottom line shows what the bot is doing.
-- **Automation** — AutoEat, MobFighter, AntiAFK, AutoSprint, AutoTool, AutoRespawn.
+A tab column on the left, the live status of the bot in the header, and **STOP** /
+**Pause** always at the bottom. Hover any button or box for a hint.
+
+- **Tasks** — *Go to* (type x / y / z or hit *Here*), *Get to* a crafting table / chest /
+  furnace, *Mine* with one-click ore presets (Diamond, Iron, Coal...) and an optional
+  count, *Follow* a player, and one-click **Chop trees / Farm / Fight mobs / Explore**.
+- **Automation** — switch on AutoEat, **MobFighter** (defends you), AntiAFK, AutoSprint,
+  AutoTool, AutoRespawn; set fight range and the hunger level it eats at.
 - **Humanizer** — turn speed, reaction time, aim shake, overshoot, click sloppiness,
-  thinking pauses, eat threshold, fight range.
-- **Pathing** — dig through blocks, place blocks (bridge/tower), parkour, max fall,
-  work in background, HUD, search/farm radius, and which blocks it may build with.
+  thinking pauses.
+- **Pathing** — dig, place blocks (bridge/tower), parkour, max fall, background mode, HUD,
+  search/farm radius, and which blocks it may build with.
 - **Waypoints** — save where you are, then *Go* or *Delete* from the list.
+
+## Fighting
+
+- **Fight mobs** (menu button or `/hb fight`) is a job: it hunts the nearest hostile mob
+  in range, walks up to it (with the pathfinder when there are walls, water or ledges in
+  the way), hits it with the best sword/axe in the hotbar, and moves on to the next.
+- **MobFighter** (Automation tab) does the same but only for mobs that come close, and
+  then hands control back to whatever job was running.
+- It hits when the crosshair is really on the mob and the attack cooldown is charged,
+  strafes a little, and backs off from creepers after a hit. Endermen, piglins, ghasts,
+  guardians, wardens and bosses are left alone.
 
 ## Commands (`/hb` or `/humanbot`)
 
@@ -59,6 +73,7 @@ Both can be rebound in *Options → Controls → HumanBot*.
 /hb follow [player]         follow a player (nearest if no name)
 /hb getto <block>           go to the nearest block and open it (crafting_table, chest...)
 /hb explore                 wander outward in a spiral of chunks
+/hb fight                   hunt and kill hostile mobs nearby
 /hb wp save|goto|del <name> waypoints   ·   /hb wp list
 /hb stop                    stop the current job
 /hb pause                   same as J
@@ -95,7 +110,12 @@ How it follows a path (the same ideas Baritone uses):
 - **It notices when things go wrong.** Pressing into something: it hops. Still stuck,
   or pushed off the path: it re-plans from where it is.
 - Searches are limited to a few milliseconds per tick, so thinking never stutters the
-  game.
+  game, and after a couple of seconds it walks the best partial path it has and keeps
+  planning the next stretch while moving (like Baritone's segments).
+- **If it's already further along the path than the plan thinks** (cut a corner, fell
+  early) it carries on from there instead of walking back.
+- Standing on farmland, dirt paths, slabs or carpets works: the feet position uses
+  Baritone's +0.1251 offset and bottom slabs count as walkable floor.
 
 It plans in segments: on long trips it works out the next stretch while still walking.
 Bridging and towering use the blocks listed under *Pathing → Blocks to build with*
@@ -128,7 +148,7 @@ Needs JDK 25:
 ./gradlew build        # Windows: gradlew.bat build
 ```
 
-Output: `build/libs/humanbot-2.1.0.jar`. `./gradlew runClient` starts a dev client.
+Output: `build/libs/humanbot-2.2.0.jar`. `./gradlew runClient` starts a dev client.
 
 ## Code map
 
@@ -142,9 +162,9 @@ src/main/java/dev/humanbot/
   path/PathFinder, Move    A* with Baritone-style moves and goals
   path/PathExecutor        performs each move with keys, mining and placing
   module/                  Module, Process (one-at-a-time jobs), ModuleManager
-  modules/                 Goto, Mine, Chop, Farm, Follow, GetTo, Explore,
-                           AutoEat, MobFighter, AntiAFK, AutoSprint, AutoTool,
-                           AutoRespawn
+  modules/                 Goto, Mine, Chop, Farm, Follow, GetTo, Explore, Fight,
+                           AutoEat, MobFighter (both use CombatAI), AntiAFK,
+                           AutoSprint, AutoTool, AutoRespawn
   util/                    InputUtil (all game input), Placer, WorldUtil, Rand
   gui/BotScreen            the tabbed menu
 ```
