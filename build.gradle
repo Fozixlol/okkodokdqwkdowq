@@ -3,7 +3,7 @@ plugins {
 }
 
 base {
-	archivesName = "humanbot"
+	archivesName = "humanbot-mc${project.minecraft_version}"
 }
 
 repositories {
@@ -17,9 +17,11 @@ dependencies {
 
 processResources {
 	def version = project.version
+	def mcDep = project.minecraft_dep
 	inputs.property "version", version
+	inputs.property "mcDep", mcDep
 	filesMatching("fabric.mod.json") {
-		expand "version": version
+		expand "version": version, "mcDep": mcDep
 	}
 }
 
