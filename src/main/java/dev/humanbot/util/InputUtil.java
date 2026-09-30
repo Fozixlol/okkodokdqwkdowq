@@ -218,6 +218,16 @@ public final class InputUtil
 		swing();
 	}
 
+	/**
+	 * Hit a mob directly, the way a click on it does: attack, then swing.
+	 * Doesn't depend on the window being focused or on the click queue.
+	 */
+	public static void attack(Entity target)
+	{
+		MC.gameMode.attack(MC.player, target);
+		swing();
+	}
+
 	private static boolean punchPacketBroken;
 
 	private static void swing()

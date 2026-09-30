@@ -11,6 +11,7 @@ import dev.humanbot.modules.AutoSprint;
 import dev.humanbot.modules.AutoTool;
 import dev.humanbot.modules.Explore;
 import dev.humanbot.modules.Farm;
+import dev.humanbot.modules.Fight;
 import dev.humanbot.modules.Follow;
 import dev.humanbot.modules.GetTo;
 import dev.humanbot.modules.Goto;
@@ -41,6 +42,7 @@ public final class ModuleManager
 	public final Farm farm = new Farm();
 	public final Explore explore = new Explore();
 	public final GetTo getTo = new GetTo();
+	public final Fight fight = new Fight();
 
 	public ModuleManager()
 	{
@@ -56,6 +58,7 @@ public final class ModuleManager
 		modules.add(mine);
 		modules.add(chop);
 		modules.add(explore);
+		modules.add(fight);
 		// helpers
 		modules.add(new AutoSprint());
 		modules.add(new AutoTool());

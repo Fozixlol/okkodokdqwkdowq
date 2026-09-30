@@ -165,6 +165,13 @@ public final class HumanBot implements ClientModInitializer
 		chat("Farming within " + BotConfig.get().farmRadius + " blocks");
 	}
 
+	public static void fight()
+	{
+		modules.fight.setEnabled(false);
+		modules.fight.setEnabled(true);
+		chat("Hunting hostile mobs nearby");
+	}
+
 	public static void explore()
 	{
 		modules.explore.setEnabled(true);
@@ -295,6 +302,10 @@ public final class HumanBot implements ClientModInitializer
 					farm(IntegerArgumentType.getInteger(ctx, "radius"));
 					return 1;
 				})))
+			.then(ClientCommands.literal("fight").executes(ctx -> {
+				fight();
+				return 1;
+			}))
 			.then(ClientCommands.literal("explore").executes(ctx -> {
 				explore();
 				return 1;
@@ -368,7 +379,7 @@ public final class HumanBot implements ClientModInitializer
 			"/hb §7- open the menu (or press Right Shift)",
 			"/hb goto <x> <z> | <x> <y> <z> | y <level>",
 			"/hb mine [blocks...] [count] §7- e.g. /hb mine diamond_ore 5",
-			"/hb chop [count]   /hb farm [radius]   /hb explore",
+			"/hb chop [count]   /hb farm [radius]   /hb explore   /hb fight",
 			"/hb follow [player]   /hb getto <block>",
 			"/hb wp save|goto|del <name>   /hb wp list",
 			"/hb stop   /hb pause §7(or J)",
