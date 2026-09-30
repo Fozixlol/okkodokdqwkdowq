@@ -43,7 +43,9 @@ public final class PathExecutor
 	private boolean pathReachesGoal;
 	private int index;
 	private int thinkTimer;
-	private int replans;
+	private int plansNoProgress;
+	private double bestGoalH = Double.MAX_VALUE;
+	private int groundWait;
 	private int stuckTicks;
 	private double bestDist = Double.MAX_VALUE;
 	private Status status = Status.IDLE;
@@ -62,7 +64,8 @@ public final class PathExecutor
 	{
 		this.goal = goal;
 		this.allowBreak = allowBreak;
-		this.replans = 0;
+		this.plansNoProgress = 0;
+		this.bestGoalH = Double.MAX_VALUE;
 		plan();
 	}
 
@@ -102,19 +105,36 @@ public final class PathExecutor
 		InputUtil.releaseMovement();
 	}
 
-	private PathFinder newFinder(BlockPos from)
+	private PathFinder newFinder(BlockPos from, boolean prefetch)
 	{
 		int budget = BotConfig.get().allowPlace ? Placer.throwawayCount() : 0;
-		return new PathFinder(from, goal, allowBreak, budget, 60_000);
+		// like Baritone: think a bit, then go with the best partial path
+		// found so far and keep planning the next stretch while walking
+		return new PathFinder(from, goal, allowBreak, budget, 150_000,
+			prefetch ? 5000 : 2500);
 	}
 
 	private void plan()
 	{
-		finder = newFinder(MC.player.blockPosition());
+		BlockPos feet = WorldUtil.feet(MC.player);
+		double h = goal.heuristic(feet);
+		if(h < bestGoalH - 1.0)
+		{
+			bestGoalH = h;
+			plansNoProgress = 0;
+		}else if(++plansNoProgress > 8)
+		{
+			// planning again and again without getting any closer
+			stop();
+			status = Status.FAILED;
+			return;
+		}
+		finder = newFinder(feet, false);
 		nextFinder = null;
 		path = null;
 		index = 1;
 		stuckTicks = 0;
+		groundWait = 0;
 		bestDist = Double.MAX_VALUE;
 		status = Status.THINKING;
 		// people take a moment to decide where to go
@@ -127,8 +147,9 @@ public final class PathExecutor
 			return status = Status.IDLE;
 
 		LocalPlayer p = MC.player;
+		boolean grounded = p.onGround() || p.isInWater();
 
-		if(goal.reached(p.blockPosition()) && p.onGround())
+		if(goal.reached(WorldUtil.feet(p)) && grounded)
 		{
 			InputUtil.releaseMovement();
 			goal = null;
@@ -139,6 +160,9 @@ public final class PathExecutor
 		if(finder != null)
 		{
 			InputUtil.releaseMovement();
+			// can't plan from mid-air (knocked off a ledge, mid-jump)
+			if(!grounded && groundWait++ < 60)
+				return status = Status.THINKING;
 			finder.stepFor(8);
 			if(thinkTimer > 0)
 				thinkTimer--;
@@ -156,29 +180,36 @@ public final class PathExecutor
 			}
 		}
 
+		// ---- did we already get further than the plan thinks? ----
+		syncProgress(grounded);
+
 		// ---- plan the next segment in the background ----
-		if(!pathReachesGoal && nextFinder == null && nodesLeft() <= 6)
-			nextFinder = newFinder(path.get(path.size() - 1).pos);
+		if(!pathReachesGoal && nextFinder == null && nodesLeft() <= 40)
+			nextFinder = newFinder(path.get(path.size() - 1).pos, true);
 		if(nextFinder != null && !nextFinder.isDone())
 			nextFinder.stepFor(4);
 
 		if(index >= path.size())
 		{
-			if(++replans > 60)
-			{
-				stop();
-				return status = Status.FAILED;
-			}
 			if(nextFinder != null && nextFinder.isDone()
 				&& nextFinder.getResult() != null
 				&& nextFinder.getResult().size() >= 2
-				&& p.blockPosition().distSqr(
+				&& WorldUtil.feet(p).distSqr(
 					nextFinder.getResult().get(0).pos) <= 2.25)
 			{
 				path = nextFinder.getResult();
 				pathReachesGoal = nextFinder.reachesGoal();
 				nextFinder = null;
 				index = 1;
+			}else if(nextFinder != null && !nextFinder.isDone()
+				&& WorldUtil.feet(p).distSqr(path.get(path.size() - 1).pos)
+					<= 2.25)
+			{
+				// nearly there: wait for the next stretch instead of
+				// throwing the half-done search away
+				InputUtil.stopWalking();
+				nextFinder.stepFor(10);
+				return status = Status.THINKING;
 			}else
 			{
 				plan();
@@ -229,7 +260,7 @@ public final class PathExecutor
 		InputUtil.hold(o.keyShift, false);
 		
 		// something new blocks us (gravel fell, a door closed...) → rethink
-		if(!WorldUtil.isPassable(node.pos)
+		if(!WorldUtil.isFeetCell(node.pos)
 			|| !WorldUtil.isPassable(node.pos.above()))
 		{
 			plan();
@@ -239,7 +270,7 @@ public final class PathExecutor
 		// Like Baritone: a step is done as soon as the feet are in the
 		// destination block (standing, or swimming). No stopping at centres,
 		// so the walk flows from one block into the next.
-		BlockPos feet = p.blockPosition();
+		BlockPos feet = WorldUtil.feet(p);
 		if(feet.equals(node.pos) && (p.onGround() || p.isInWater()))
 		{
 			advance();
@@ -353,7 +384,7 @@ public final class PathExecutor
 		Options o = InputUtil.opt();
 		BlockPos placeAt = prev.pos; // the block we stand in becomes floor
 
-		if(p.onGround() && p.blockPosition().equals(node.pos))
+		if(p.onGround() && WorldUtil.feet(p).equals(node.pos))
 		{
 			advance();
 			return status = Status.PLACING;
@@ -487,7 +518,7 @@ public final class PathExecutor
 		InputUtil.hold(o.keyJump, p.onGround() && facing && along < 0.6
 			&& (along > jumpAt || next > 0.47));
 
-		if(p.onGround() && p.blockPosition().equals(node.pos))
+		if(p.onGround() && WorldUtil.feet(p).equals(node.pos))
 			advance();
 		else if(!airborne && p.getY() < prev.pos.getY() - 0.5)
 			plan(); // missed the jump
@@ -507,6 +538,26 @@ public final class PathExecutor
 		return status;
 	}
 
+	/**
+	 * Like Baritone: if the player is standing on a later node of the path
+	 * (cut a corner, got flung forward, fell down early), carry on from there
+	 * instead of walking back to the node we "missed".
+	 */
+	private void syncProgress(boolean grounded)
+	{
+		if(!grounded || path == null)
+			return;
+		BlockPos feet = WorldUtil.feet(MC.player);
+		int last = Math.min(path.size() - 1, index + 4);
+		for(int i = last; i >= index; i--)
+			if(path.get(i).pos.equals(feet))
+			{
+				index = i;
+				advance();
+				return;
+			}
+	}
+
 	private void advance()
 	{
 		index++;
@@ -518,6 +569,8 @@ public final class PathExecutor
 
 	private void trackStuck(double dist)
 	{
+		if(!MC.player.onGround() && !MC.player.isInWater())
+			return; // falling or mid-jump is not "stuck"
 		if(dist < bestDist - 0.05)
 		{
 			bestDist = dist;

@@ -6,10 +6,14 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.IdentityHashMap;
+import java.util.Map;
 
 /** Block and world queries used by the pathfinder and the modules. */
 public final class WorldUtil
@@ -42,26 +46,96 @@ public final class WorldUtil
 			.isEmpty();
 	}
 
-	/** Things a sensible player never walks into or stands on. */
-	public static boolean isDangerous(BlockPos pos)
+	/** Per-block-type answers, so the pathfinder doesn't do string work per node. */
+	private static final Map<Block, Boolean> DANGEROUS = new IdentityHashMap<>();
+	private static final Map<Block, Boolean> WATER = new IdentityHashMap<>();
+	private static final Map<Block, Boolean> LAVA = new IdentityHashMap<>();
+
+	private static boolean dangerousId(String id)
 	{
-		String id = id(pos);
 		return id.equals("lava") || id.equals("fire") || id.equals("soul_fire")
 			|| id.equals("magma_block") || id.equals("cactus")
 			|| id.equals("sweet_berry_bush") || id.equals("powder_snow")
 			|| id.equals("campfire") || id.equals("soul_campfire")
-			|| id.equals("wither_rose") || id.equals("cobweb");
+			|| id.equals("wither_rose") || id.equals("cobweb")
+			|| id.equals("wither_skeleton_skull") || id.equals("end_portal")
+			|| id.equals("nether_portal") || id.equals("bubble_column");
+	}
+
+	/** Things a sensible player never walks into or stands on. */
+	public static boolean isDangerous(BlockPos pos)
+	{
+		Block b = state(pos).getBlock();
+		Boolean r = DANGEROUS.get(b);
+		if(r == null)
+		{
+			r = dangerousId(BuiltInRegistries.BLOCK.getKey(b).getPath());
+			DANGEROUS.put(b, r);
+		}
+		return r;
+	}
+
+	public static boolean isLava(BlockPos pos)
+	{
+		Block b = state(pos).getBlock();
+		Boolean r = LAVA.get(b);
+		if(r == null)
+		{
+			r = BuiltInRegistries.BLOCK.getKey(b).getPath().equals("lava");
+			LAVA.put(b, r);
+		}
+		return r;
 	}
 
 	public static boolean isWater(BlockPos pos)
 	{
-		return id(pos).equals("water");
+		Block b = state(pos).getBlock();
+		Boolean r = WATER.get(b);
+		if(r == null)
+		{
+			String id = BuiltInRegistries.BLOCK.getKey(b).getPath();
+			r = id.equals("water") || id.equals("bubble_column");
+			WATER.put(b, r);
+		}
+		return r;
+	}
+
+	/**
+	 * Height of the collision box inside this cell (0 = nothing to collide
+	 * with, 0.5 = bottom slab, 1 = full block, 1.5 = fence).
+	 */
+	public static double collisionTop(BlockPos pos)
+	{
+		ClientLevel level = MC.level;
+		net.minecraft.world.phys.shapes.VoxelShape shape =
+			level.getBlockState(pos).getCollisionShape(level, pos);
+		return shape.isEmpty() ? 0 : shape.bounds().maxY;
+	}
+
+	/** A bottom slab, or similar: you can stand on it inside the same cell. */
+	public static boolean isLowFloor(BlockPos pos)
+	{
+		double h = collisionTop(pos);
+		return h > 0.1 && h <= 0.5;
+	}
+
+	/** Cell where the player's feet are (Baritone's +0.1251 trick, so
+	 * standing on farmland, paths and slabs counts as the right block). */
+	public static BlockPos feet(LocalPlayer p)
+	{
+		return BlockPos.containing(p.getX(), p.getY() + 0.1251, p.getZ());
 	}
 
 	/** A cell the player's body can occupy right now. */
 	public static boolean isPassable(BlockPos pos)
 	{
-		return !isSolid(pos) && !isDangerous(pos);
+		return collisionTop(pos) <= 0.1 && !isDangerous(pos);
+	}
+
+	/** Passable as the cell the feet stand in (also allows a bottom slab). */
+	public static boolean isFeetCell(BlockPos pos)
+	{
+		return collisionTop(pos) <= 0.5 && !isDangerous(pos);
 	}
 
 	public static boolean isStandable(BlockPos below)
@@ -71,11 +145,8 @@ public final class WorldUtil
 
 	public static boolean lavaNearby(BlockPos pos)
 	{
-		for(BlockPos p : new BlockPos[]{pos.above(), pos.below(), pos.north(),
-			pos.south(), pos.east(), pos.west()})
-			if(id(p).equals("lava"))
-				return true;
-		return false;
+		return isLava(pos.above()) || isLava(pos.below()) || isLava(pos.north())
+			|| isLava(pos.south()) || isLava(pos.east()) || isLava(pos.west());
 	}
 
 	/** Can this block be mined without doing something stupid? */
