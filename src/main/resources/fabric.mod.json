@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "humanbot",
+	"version": "${version}",
+	"name": "HumanBot",
+	"description": "Baritone-style bot that plays for you with human-like aim and timing: pathfinding (walk, dig, bridge, tower, parkour), mining, tree chopping, farming, following, exploring, waypoints, auto-eat, mob fighting. Right Shift opens the menu, J pauses, /hb help lists commands.",
+	"authors": [
+		"drewdadev"
+	],
+	"license": "MIT",
+	"icon": "assets/humanbot/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"dev.humanbot.HumanBot"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
