@@ -45,6 +45,14 @@ public final class BotScreen extends Screen
 		Runnable plus)
 	{}
 
+	/** Hover text shown in the footer for a screen rectangle. */
+	private record Hint(int x, int y, int w, int h, String text)
+	{}
+
+	private static final int BG = 0xF0141A22, HEADER = 0xFF1B2733,
+		ACCENT = 0xFF3FB6FF, CARD = 0xFF19212B, EDGE = 0xFF2B3948,
+		DIM = 0xFF8A97A6, TEXT = 0xFFE4EAF0;
+
 	// remembered between openings
 	private static Tab tab = Tab.TASKS;
 	private static String gx = "", gy = "", gz = "", mineBlocks = "",
@@ -53,7 +61,10 @@ public final class BotScreen extends Screen
 	private static int wpPage;
 
 	private final List<Label> labels = new ArrayList<>();
+	private final List<Hint> hints = new ArrayList<>();
 	private int left, top, panelW, panelH;
+	/** Left edge and width of the area right of the tab column. */
+	private int cx, cw;
 
 	public BotScreen()
 	{
@@ -66,26 +77,28 @@ public final class BotScreen extends Screen
 	public void init()
 	{
 		labels.clear();
-		panelW = Math.min(440, width - 16);
-		panelH = Math.min(290, height - 16);
+		hints.clear();
+		panelW = Math.min(480, width - 12);
+		panelH = Math.min(300, height - 12);
 		left = (width - panelW) / 2;
 		top = (height - panelH) / 2;
+		cx = left + 96;
+		cw = panelW - 96 - 8;
 
-		// tab bar
-		int tw = (panelW - 8) / Tab.values().length;
-		for(int i = 0; i < Tab.values().length; i++)
+		// tab column
+		Tab[] tabs = Tab.values();
+		for(int i = 0; i < tabs.length; i++)
 		{
-			Tab t = Tab.values()[i];
-			Button b = Button.builder(
+			Tab t = tabs[i];
+			addRenderableWidget(Button.builder(
 				Component.literal(t == tab ? "§e" + t.title : t.title),
 				btn -> {
 					tab = t;
 					rebuildWidgets();
-				}).bounds(left + 4 + i * tw, top + 20, tw - 2, 18).build();
-			addRenderableWidget(b);
+				}).bounds(left + 8, top + 28 + i * 24, 78, 20).build());
 		}
 
-		int y = top + 46;
+		int y = top + 28;
 		switch(tab)
 		{
 			case TASKS -> buildTasks(y);
@@ -95,118 +108,146 @@ public final class BotScreen extends Screen
 			case WAYPOINTS -> buildWaypoints(y);
 		}
 
-		addRenderableWidget(Button.builder(Component.literal("Done"),
-			b -> onClose()).bounds(left + panelW - 64, top + panelH - 24, 60, 20)
-			.build());
+		// footer: always there, on every tab
+		int fy = top + panelH - 24;
+		ModuleManager mm = HumanBot.modules();
+		button("§cSTOP", left + 8, fy, 78, "Stop the current job", () -> {
+			HumanBot.stop();
+			rebuildWidgets();
+		});
+		button(mm.isPaused() ? "§aResume" : "Pause (J)", cx, fy, 80,
+			"Take the controls back (J), press again to resume", () -> {
+				HumanBot.togglePause();
+				rebuildWidgets();
+			});
+		button("Done", left + panelW - 68, fy, 60, "Close the menu",
+			this::onClose);
 	}
 
 	// ---------------------------------------------------------------- tasks
 
 	private void buildTasks(int y)
 	{
-		ModuleManager mm = HumanBot.modules();
-		int x = left + 8;
-		int col = left + 76;
+		int x = cx;
+		int fx = cx + 46; // fields start here
 
 		// go to
-		label("Go to", x, y + 6);
-		box(col, y, 50, gx, v -> gx = v);
-		box(col + 54, y, 50, gy, v -> gy = v);
-		box(col + 108, y, 50, gz, v -> gz = v);
-		label("§8x   y (optional)   z", col, y + 21);
-		button("Go", col + 162, y, 40, () -> {
-			try
-			{
-				int ix = Integer.parseInt(gx.trim());
-				int iz = Integer.parseInt(gz.trim());
-				Integer iy = gy.isBlank() ? null : Integer.parseInt(gy.trim());
-				HumanBot.goTo(ix, iy, iz);
-				onClose();
-			}catch(NumberFormatException e)
-			{
-				HumanBot.chat("Enter numbers for x and z (y is optional)");
-			}
-		});
-		button("Here", col + 206, y, 44, () -> {
+		label("Go to", x, y + 5);
+		box(fx, y, 46, "x", gx, v -> gx = v);
+		box(fx + 49, y, 46, "y", gy, v -> gy = v);
+		box(fx + 98, y, 46, "z", gz, v -> gz = v);
+		button("Here", fx + 148, y, 40, "Fill in where you stand", () -> {
 			BlockPos p = minecraft.player.blockPosition();
 			gx = "" + p.getX();
 			gy = "" + p.getY();
 			gz = "" + p.getZ();
 			rebuildWidgets();
 		});
-		y += 34;
+		button("Go", fx + 191, y, Math.max(34, cx + cw - (fx + 191)),
+			"Walk there. y is optional (empty = any height)", () -> {
+				try
+				{
+					int ix = Integer.parseInt(gx.trim());
+					int iz = Integer.parseInt(gz.trim());
+					Integer iy =
+						gy.isBlank() ? null : Integer.parseInt(gy.trim());
+					HumanBot.goTo(ix, iy, iz);
+					onClose();
+				}catch(NumberFormatException e)
+				{
+					HumanBot.chat("Enter numbers for x and z (y is optional)");
+				}
+			});
+		y += 22;
+
+		// get to
+		label("Get to", x, y + 5);
+		box(fx, y, cw - 46 - 40, "block, e.g. crafting_table", getToBlock,
+			v -> getToBlock = v);
+		button("Go", cx + cw - 36, y, 36,
+			"Walk to the nearest one and open it", () -> {
+				if(!getToBlock.isBlank())
+				{
+					HumanBot.getTo(getToBlock.trim());
+					onClose();
+				}
+			});
+		y += 22;
 
 		// mine
-		label("Mine", x, y + 6);
-		box(col, y, 158, mineBlocks, v -> mineBlocks = v);
-		box(col + 162, y, 40, mineCount, v -> mineCount = v);
-		label("§8blocks, e.g. diamond_ore (empty = ores)   count", col,
-			y + 21);
-		button("Start", col + 206, y, 44, () -> {
-			List<String> blocks = new ArrayList<>();
-			for(String s : mineBlocks.trim().split("[\\s,]+"))
-				if(!s.isEmpty())
-					blocks.add(s);
-			int count = 0;
-			try
-			{
-				if(!mineCount.isBlank())
-					count = Integer.parseInt(mineCount.trim());
-			}catch(NumberFormatException ignored)
-			{}
-			HumanBot.mine(blocks, count);
-			onClose();
-		});
-		y += 34;
+		label("Mine", x, y + 5);
+		box(fx, y, cw - 46 - 40 - 42, "blocks (empty = all ores)", mineBlocks,
+			v -> mineBlocks = v);
+		box(cx + cw - 76, y, 36, "how many", mineCount, v -> mineCount = v);
+		button("Start", cx + cw - 36, y, 36, "Mine until you stop it, or "
+			+ "until the count is reached", () -> {
+				List<String> blocks = new ArrayList<>();
+				for(String s : mineBlocks.trim().split("[\\s,]+"))
+					if(!s.isEmpty())
+						blocks.add(s);
+				int count = 0;
+				try
+				{
+					if(!mineCount.isBlank())
+						count = Integer.parseInt(mineCount.trim());
+				}catch(NumberFormatException ignored)
+				{}
+				HumanBot.mine(blocks, count);
+				onClose();
+			});
+		y += 22;
+
+		// ore presets
+		String[][] presets = {{"Diamond", "diamond_ore deepslate_diamond_ore"},
+			{"Iron", "iron_ore deepslate_iron_ore"},
+			{"Coal", "coal_ore deepslate_coal_ore"},
+			{"Gold", "gold_ore deepslate_gold_ore"},
+			{"Copper", "copper_ore deepslate_copper_ore"},
+			{"Redstone", "redstone_ore deepslate_redstone_ore"},
+			{"Lapis", "lapis_ore deepslate_lapis_ore"},
+			{"Emerald", "emerald_ore deepslate_emerald_ore"}};
+		int pw = (cw - 46 - 3 * 3) / 4;
+		for(int i = 0; i < presets.length; i++)
+		{
+			String[] pr = presets[i];
+			button(pr[0], fx + (i % 4) * (pw + 3), y + (i / 4) * 20, pw,
+				"Fill in: " + pr[1], () -> {
+					mineBlocks = pr[1];
+					rebuildWidgets();
+				});
+		}
+		y += 44;
 
 		// follow
-		label("Follow", x, y + 6);
-		box(col, y, 202, followName, v -> followName = v);
-		label("§8player name (empty = nearest)", col, y + 21);
-		button("Start", col + 206, y, 44, () -> {
+		label("Follow", x, y + 5);
+		box(fx, y, cw - 46 - 40, "player name (empty = nearest)", followName,
+			v -> followName = v);
+		button("Go", cx + cw - 36, y, 36, "Follow them around", () -> {
 			HumanBot.follow(followName.trim());
 			onClose();
 		});
-		y += 34;
-
-		// get to
-		label("Get to", x, y + 6);
-		box(col, y, 202, getToBlock, v -> getToBlock = v);
-		label("§8block, e.g. crafting_table, chest, furnace", col, y + 21);
-		button("Go", col + 206, y, 44, () -> {
-			if(!getToBlock.isBlank())
-			{
-				HumanBot.getTo(getToBlock.trim());
-				onClose();
-			}
-		});
-		y += 36;
+		y += 26;
 
 		// one-click jobs
-		int bw = (panelW - 16 - 12) / 4;
-		button("Chop trees", x, y, bw, () -> {
+		int bw = (cw - 3 * 4) / 4;
+		button("§aChop trees", x, y, bw, "Chop down nearby trees", () -> {
 			HumanBot.chop(0);
 			onClose();
 		});
-		button("Farm", x + (bw + 4), y, bw, () -> {
-			HumanBot.farm(null);
-			onClose();
-		});
-		button("Explore", x + (bw + 4) * 2, y, bw, () -> {
-			HumanBot.explore();
-			onClose();
-		});
-		button("Mine ores", x + (bw + 4) * 3, y, bw, () -> {
-			HumanBot.mine(List.of(), 0);
-			onClose();
-		});
-		y += 24;
-
-		button("§cSTOP", x, y, bw * 2 + 4, HumanBot::stop);
-		button(mm.isPaused() ? "§aResume" : "Pause (J)", x + (bw + 4) * 2, y,
-			bw * 2 + 4, () -> {
-				HumanBot.togglePause();
-				rebuildWidgets();
+		button("§aFarm", x + (bw + 4), y, bw,
+			"Harvest ripe crops around you and replant", () -> {
+				HumanBot.farm(null);
+				onClose();
+			});
+		button("§cFight mobs", x + (bw + 4) * 2, y, bw,
+			"Hunt and kill hostile mobs nearby", () -> {
+				HumanBot.fight();
+				onClose();
+			});
+		button("§bExplore", x + (bw + 4) * 3, y, bw,
+			"Wander outwards to see new chunks", () -> {
+				HumanBot.explore();
+				onClose();
 			});
 	}
 
@@ -214,18 +255,36 @@ public final class BotScreen extends Screen
 
 	private void buildAutomation(int y)
 	{
-		int x = left + 8;
+		label("§7Switch on what should happen by itself, alongside any job.",
+			cx, y + 2);
+		y += 16;
+		int colW = (cw - 4) / 2;
+		int i = 0;
 		for(Module m : HumanBot.modules().toggles())
 		{
 			Button[] self = new Button[1];
+			int bx = cx + (i % 2) * (colW + 4);
+			int by = y + (i / 2) * 22;
 			self[0] = Button.builder(toggleLabel(m), b -> {
 				m.setEnabled(!m.isEnabled());
 				self[0].setMessage(toggleLabel(m));
-			}).bounds(x, y, 120, 18).build();
+			}).bounds(bx, by, colW, 20).build();
 			addRenderableWidget(self[0]);
-			label("§7" + m.description(), x + 126, y + 5);
-			y += 22;
+			hints.add(new Hint(bx, by, colW, 20, m.description()));
+			i++;
 		}
+		y += ((i + 1) / 2) * 22 + 6;
+
+		// the two numbers that matter most for these
+		BotConfig c = BotConfig.get();
+		List<Row> rows = new ArrayList<>();
+		rows.add(new Row("Fight range", () -> c.fightRange + " blocks",
+			() -> c.fightRange = (int)clamp(c.fightRange - 1, 3, 32),
+			() -> c.fightRange = (int)clamp(c.fightRange + 1, 3, 32)));
+		rows.add(new Row("Eat below hunger", () -> c.eatBelowHunger + " / 20",
+			() -> c.eatBelowHunger = (int)clamp(c.eatBelowHunger - 1, 1, 19),
+			() -> c.eatBelowHunger = (int)clamp(c.eatBelowHunger + 1, 1, 19)));
+		buildRows(y, rows);
 	}
 
 	// ------------------------------------------------------------ humanizer
@@ -251,12 +310,6 @@ public final class BotScreen extends Screen
 			() -> c.clickSloppiness = clamp(c.clickSloppiness + 0.05f, 0, 1)));
 		rows.add(toggleRow("Thinking pauses", () -> c.microPauses,
 			v -> c.microPauses = v));
-		rows.add(new Row("Eat below hunger", () -> c.eatBelowHunger + " / 20",
-			() -> c.eatBelowHunger = (int)clamp(c.eatBelowHunger - 1, 1, 19),
-			() -> c.eatBelowHunger = (int)clamp(c.eatBelowHunger + 1, 1, 19)));
-		rows.add(new Row("Fight range", () -> c.fightRange + " blocks",
-			() -> c.fightRange = (int)clamp(c.fightRange - 1, 3, 32),
-			() -> c.fightRange = (int)clamp(c.fightRange + 1, 3, 32)));
 		return rows;
 	}
 
@@ -289,19 +342,20 @@ public final class BotScreen extends Screen
 		y = buildRows(y, rows);
 
 		// throwaway blocks
-		int x = left + 8;
+		int x = cx;
 		label("Blocks to build with: §7" + summary(c.throwawayBlocks), x,
 			y + 4);
 		y += 16;
-		box(x, y, 200, throwawayInput, v -> throwawayInput = v);
-		button("Add", x + 204, y, 40, () -> {
+		box(x, y, 180, "block id, e.g. cobblestone", throwawayInput,
+			v -> throwawayInput = v);
+		button("Add", x + 184, y, 40, "Allow building with this block", () -> {
 			String id = throwawayInput.trim().replace("minecraft:", "");
 			if(!id.isEmpty() && !c.throwawayBlocks.contains(id))
 				c.throwawayBlocks.add(id);
 			BotConfig.save();
 			rebuildWidgets();
 		});
-		button("Remove", x + 248, y, 54, () -> {
+		button("Remove", x + 228, y, 54, "Don't build with this block", () -> {
 			c.throwawayBlocks.remove(throwawayInput.trim()
 				.replace("minecraft:", ""));
 			BotConfig.save();
@@ -313,10 +367,10 @@ public final class BotScreen extends Screen
 
 	private void buildWaypoints(int y)
 	{
-		int x = left + 8;
+		int x = cx;
 		label("Name", x, y + 6);
-		box(x + 36, y, 150, wpName, v -> wpName = v);
-		button("Save here", x + 190, y, 70, () -> {
+		box(x + 36, y, 150, "name (optional)", wpName, v -> wpName = v);
+		button("Save here", x + 190, y, 70, "Remember where you stand", () -> {
 			String n = wpName.trim();
 			if(n.isEmpty())
 				n = "wp" + (Waypoints.here().size() + 1);
@@ -327,7 +381,7 @@ public final class BotScreen extends Screen
 		y += 28;
 
 		List<Waypoint> list = Waypoints.here();
-		int perPage = Math.max(1, (top + panelH - 56 - y) / 22);
+		int perPage = Math.max(1, (top + panelH - 34 - y) / 22);
 		int pages = Math.max(1, (list.size() + perPage - 1) / perPage);
 		wpPage = Math.min(wpPage, pages - 1);
 		if(list.isEmpty())
@@ -337,11 +391,11 @@ public final class BotScreen extends Screen
 		{
 			Waypoint w = list.get(i);
 			label(w.name + " §7" + w.x + " " + w.y + " " + w.z, x, y + 6);
-			button("Go", left + panelW - 118, y, 50, () -> {
+			button("Go", cx + cw - 110, y, 50, "Walk to " + w.name, () -> {
 				HumanBot.gotoWaypoint(w.name);
 				onClose();
 			});
-			button("§cDelete", left + panelW - 64, y, 56, () -> {
+			button("§cDelete", cx + cw - 56, y, 56, "Forget " + w.name, () -> {
 				Waypoints.delete(w.name);
 				rebuildWidgets();
 			});
@@ -350,12 +404,12 @@ public final class BotScreen extends Screen
 		if(pages > 1)
 		{
 			int by = top + panelH - 50;
-			button("<", x, by, 20, () -> {
+			button("<", x, by, 20, "Previous page", () -> {
 				wpPage = Math.max(0, wpPage - 1);
 				rebuildWidgets();
 			});
 			label((wpPage + 1) + "/" + pages, x + 26, by + 6);
-			button(">", x + 50, by, 20, () -> {
+			button(">", x + 50, by, 20, "Next page", () -> {
 				wpPage = Math.min(pages - 1, wpPage + 1);
 				rebuildWidgets();
 			});
@@ -367,19 +421,19 @@ public final class BotScreen extends Screen
 	/** -/+ rows in two columns. Returns the y below them. */
 	private int buildRows(int y, List<Row> rows)
 	{
-		int colW = (panelW - 16) / 2;
+		int colW = (cw - 6) / 2;
 		for(int i = 0; i < rows.size(); i++)
 		{
 			Row r = rows.get(i);
-			int x = left + 8 + (i % 2) * colW;
+			int x = cx + (i % 2) * (colW + 6);
 			int ry = y + (i / 2) * 22;
-			int right = x + colW - 8;
-			labels.add(new Label(null, x, ry + 5, i)); // value drawn live
-			button("-", right - 42, ry, 20, () -> {
+			int right = x + colW;
+			labels.add(new Label(null, x, ry + 6, i)); // value drawn live
+			button("-", right - 44, ry, 20, null, () -> {
 				r.minus().run();
 				BotConfig.save();
 			});
-			button("+", right - 20, ry, 20, () -> {
+			button("+", right - 22, ry, 22, null, () -> {
 				r.plus().run();
 				BotConfig.save();
 			});
@@ -400,21 +454,28 @@ public final class BotScreen extends Screen
 
 	private void label(String text, int x, int y)
 	{
-		labels.add(new Label(text, x, y, 0xFFFFFFFF));
+		labels.add(new Label(text, x, y, TEXT));
 	}
 
-	private void button(String text, int x, int y, int w, Runnable action)
+	private void button(String text, int x, int y, int w, String hint,
+		Runnable action)
 	{
 		addRenderableWidget(Button.builder(Component.literal(text), b -> action
-			.run()).bounds(x, y, w, 18).build());
+			.run()).bounds(x, y, w, 20).build());
+		if(hint != null)
+			hints.add(new Hint(x, y, w, 20, hint));
 	}
 
-	private void box(int x, int y, int w, String value, Consumer<String> onChange)
+	private void box(int x, int y, int w, String placeholder, String value,
+		Consumer<String> onChange)
 	{
-		EditBox e = new EditBox(font, x, y, w, 18, Component.literal(""));
+		EditBox e = new EditBox(font, x, y, w, 20, Component.literal(""));
+		e.setHint(Component.literal("§8" + placeholder));
+		e.setMaxLength(200);
 		e.setValue(value);
 		e.setResponder(onChange);
 		addRenderableWidget(e);
+		hints.add(new Hint(x, y, w, 20, placeholder));
 	}
 
 	// ================================================================ drawing
@@ -424,21 +485,30 @@ public final class BotScreen extends Screen
 		int mouseY, float partialTicks)
 	{
 		g.fill(0, 0, width, height, 0x90000000);
-		g.fill(left, top, left + panelW, top + panelH, 0xF0151A21);
-		g.fill(left, top, left + panelW, top + 16, 0xFF1F2A36);
-		g.text(font, "§lHumanBot", left + 6, top + 4, 0xFF55DDFF, true);
+		// panel with a border
+		g.fill(left - 1, top - 1, left + panelW + 1, top + panelH + 1, EDGE);
+		g.fill(left, top, left + panelW, top + panelH, BG);
+		// header with the live status
+		g.fill(left, top, left + panelW, top + 20, HEADER);
+		g.fill(left, top + 20, left + panelW, top + 21, ACCENT);
+		g.text(font, "§lHumanBot", left + 8, top + 6, ACCENT, true);
 
-		// what it's doing right now
 		ModuleManager mm = HumanBot.modules();
 		Process p = mm.runningProcess();
-		String now = mm.isPaused() ? "§epaused"
-			: p == null ? "§7idle" : "§a" + p.name() + " §7"
-				+ p.status();
-		String nowLine = "Now: " + now;
-		int maxW = panelW - 90;
-		while(font.width(nowLine) > maxW && nowLine.length() > 8)
-			nowLine = nowLine.substring(0, nowLine.length() - 2);
-		g.text(font, nowLine, left + 6, top + panelH - 18, 0xFFDDDDDD, true);
+		String now = mm.isPaused() ? "§epaused - you have control"
+			: p == null ? "§7idle" : "§a" + p.name() + " §7" + p.status();
+		int maxW = panelW - 100;
+		while(font.width(now) > maxW && now.length() > 8)
+			now = now.substring(0, now.length() - 2);
+		g.text(font, now, left + panelW - 8 - font.width(now), top + 6, TEXT,
+			true);
+
+		// tab column and the selected tab's accent bar
+		g.fill(left + 4, top + 24, left + 90, top + panelH - 30, CARD);
+		g.fill(left + 4, top + 28 + tab.ordinal() * 24,
+			left + 6, top + 48 + tab.ordinal() * 24, ACCENT);
+		// content card
+		g.fill(cx - 4, top + 24, left + panelW - 4, top + panelH - 30, CARD);
 
 		for(Label l : labels)
 		{
@@ -446,13 +516,28 @@ public final class BotScreen extends Screen
 			{
 				Row r = currentRows.get(l.color());
 				g.text(font, r.label() + ": §e" + r.value().get(), l.x(),
-					l.y(), 0xFFDDDDDD, true);
+					l.y(), TEXT, true);
 			}else
 				g.text(font, l.text(), l.x(), l.y(), l.color(), true);
 		}
 
 		// let the game draw the buttons and text boxes on top
 		super.extractRenderState(g, mouseX, mouseY, partialTicks);
+
+		// hover hint in the footer
+		String hint = "";
+		for(Hint h : hints)
+			if(mouseX >= h.x() && mouseX < h.x() + h.w() && mouseY >= h.y()
+				&& mouseY < h.y() + h.h())
+				hint = h.text();
+		if(!hint.isEmpty())
+		{
+			int hx = cx + 88;
+			int room = left + panelW - 74 - hx;
+			while(font.width(hint) > room && hint.length() > 4)
+				hint = hint.substring(0, hint.length() - 2);
+			g.text(font, "§7" + hint, hx, top + panelH - 18, DIM, true);
+		}
 	}
 
 	@Override
