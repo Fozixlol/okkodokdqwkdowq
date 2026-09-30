@@ -10,11 +10,9 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
-import net.minecraft.network.protocol.game.ServerboundPunchPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
@@ -190,8 +188,7 @@ public final class InputUtil
 			MC.gameMode.useItemOn(MC.player, InteractionHand.MAIN_HAND, bhr);
 		if(r.consumesAction())
 		{
-			MC.player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT,
-				false);
+			Compat.swingUse();
 			return true;
 		}
 		return false;
@@ -228,23 +225,9 @@ public final class InputUtil
 		swing();
 	}
 
-	private static boolean punchPacketBroken;
-
 	private static void swing()
 	{
-		MC.player.swing(InteractionHand.MAIN_HAND,
-			MC.player.getMainHandItem().getAttackAnimation(), false);
-		if(punchPacketBroken)
-			return;
-		try
-		{
-			// tells the server to show the arm swing, like vanilla does
-			MC.player.connection.send(ServerboundPunchPacket.INSTANCE);
-		}catch(LinkageError e)
-		{
-			punchPacketBroken = true;
-			HumanBot.LOGGER.warn("HumanBot: swing packet unavailable", e);
-		}
+		Compat.swingAttack();
 	}
 
 	// ------------------------------------------------------------ hotbar

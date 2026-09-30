@@ -22,7 +22,7 @@ jobs:
           echo "Fabric API: $API"
           test -n "$API"
           echo "API=$API" >> "$GITHUB_ENV"
-      - run: chmod +x gradlew && ./gradlew build --no-daemon -Pminecraft_version=${{ matrix.mc }} -Pfabric_api_version=$API -Pminecraft_dep="~${{ matrix.mc }}"
+      - run: chmod +x gradlew && ./gradlew build --no-daemon -Pminecraft_version=${{ matrix.mc }} -Pfabric_api_version=$API -Pminecraft_dep="~${{ matrix.mc }}" -Pcompat_dir=mc${{ matrix.mc }}
       - uses: actions/upload-artifact@v4
         with:
           name: humanbot-mc${{ matrix.mc }}

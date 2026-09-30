@@ -6,7 +6,6 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -17,6 +16,7 @@ import dev.humanbot.gui.BotScreen;
 import dev.humanbot.module.Module;
 import dev.humanbot.module.ModuleManager;
 import dev.humanbot.path.PathFinder;
+import dev.humanbot.util.Compat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
@@ -35,10 +35,6 @@ public final class HumanBot implements ClientModInitializer
 	public static final String MOD_ID = "humanbot";
 	public static final Logger LOGGER = LoggerFactory.getLogger("HumanBot");
 
-	// SDL scancodes (Minecraft 26.x uses SDL for keyboard input)
-	private static final int KEY_RSHIFT = 229;
-	private static final int KEY_J = 13;
-
 	private static ModuleManager modules;
 	private static KeyMapping menuKey;
 	private static KeyMapping pauseKey;
@@ -53,9 +49,9 @@ public final class HumanBot implements ClientModInitializer
 		KeyMapping.Category cat = KeyMapping.Category
 			.register(Identifier.fromNamespaceAndPath(MOD_ID, "main"));
 		menuKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-			"key.humanbot.menu", InputConstants.Type.KEYBOARD, KEY_RSHIFT, cat));
+			"key.humanbot.menu", Compat.keyType(), Compat.keyRightShift(), cat));
 		pauseKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-			"key.humanbot.pause", InputConstants.Type.KEYBOARD, KEY_J, cat));
+			"key.humanbot.pause", Compat.keyType(), Compat.keyJ(), cat));
 
 		ClientTickEvents.END_CLIENT_TICK.register(HumanBot::onTick);
 		HudElementRegistry.addLast(
